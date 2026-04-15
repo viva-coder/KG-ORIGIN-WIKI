@@ -203,5 +203,5 @@ def add_edge():
 
 if __name__ == '__main__':
     # On first run or when structure changes, uncomment the next line:
-    init_db() 
+    #init_db() 
     app.run(debug=True, port=10000)
