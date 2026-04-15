@@ -7,7 +7,6 @@ from flask import Flask, jsonify, request, send_from_directory
 app = Flask(__name__, static_folder='static')
 
 # ── Configuration ────────────────────────────────────────────────────────────
-# Use the INTERNAL Database URL from Render for the best connection
 DATABASE_URL = os.environ.get('DATABASE_URL', '')
 
 # ── All 29 wiki pages as seed nodes ──────────────────────────────────────────
@@ -62,21 +61,24 @@ def get_db_connection():
     uri = DATABASE_URL
     if not uri:
         return None
+    # Standard fix for Postgres URI formatting
     if uri.startswith("postgres://"):
         uri = uri.replace("postgres://", "postgresql://", 1)
     return psycopg2.connect(uri, cursor_factory=RealDictCursor)
 
 def init_db():
+    """Builds the ORIGIN schema and seeds initial content."""
     conn = get_db_connection()
     if not conn:
-        print("Error: DATABASE_URL not set.")
+        print("DATABASE_URL not found. Skipping initialization.")
         return
-    cur = conn.cursor()
     
-    # Using 'origin_' prefix to avoid collisions with other projects
+    cur = conn.cursor()
+    print("Dropping old ORIGIN tables if they exist...")
     cur.execute("DROP TABLE IF EXISTS origin_edges CASCADE;")
     cur.execute("DROP TABLE IF EXISTS origin_nodes CASCADE;")
     
+    print("Creating fresh ORIGIN tables...")
     cur.execute('''
         CREATE TABLE origin_nodes (
             id TEXT PRIMARY KEY,
@@ -95,18 +97,21 @@ def init_db():
         );
     ''')
     
+    print(f"Seeding {len(SEED_NODES)} nodes...")
     for n in SEED_NODES:
         cur.execute("INSERT INTO origin_nodes (id, label, category, url, tags, notes) VALUES (%s, %s, %s, %s, %s, %s)",
             (n['id'], n['label'], n['category'], n.get('url',''), n.get('tags',''), n.get('notes','')))
+    
     for e in SEED_EDGES:
         cur.execute("INSERT INTO origin_edges (source, target) VALUES (%s, %s)", (e['source'], e['target']))
     
     conn.commit()
     cur.close()
     conn.close()
-    print("ORIGIN Knowledge Graph database seeded successfully.")
+    print("Database Seeded Successfully!")
 
 # ── API Routes ────────────────────────────────────────────────────────────────
+
 @app.route('/')
 def index():
     return send_from_directory('.', 'index.html')
@@ -166,7 +171,14 @@ def add_edge():
     conn.close()
     return jsonify(new_edge)
 
+# ── Startup Execution ────────────────────────────────────────────────────────
+
+# We call this outside the __name__ == '__main__' block so that Render's 
+# production server (Gunicorn) executes it immediately upon import.
+try:
+    init_db()
+except Exception as startup_err:
+    print(f"Non-critical startup error: {startup_err}")
+
 if __name__ == '__main__':
-    # Force initialize on startup to build the new origin_ tables
-    init_db() 
     app.run(debug=True, port=10000)
