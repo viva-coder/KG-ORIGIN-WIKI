@@ -7,85 +7,8 @@ from flask import Flask, jsonify, request, send_from_directory
 app = Flask(__name__, static_folder='static')
 
 # ── Configuration ────────────────────────────────────────────────────────────
+# Use the INTERNAL Database URL from Render for the best connection
 DATABASE_URL = os.environ.get('DATABASE_URL', '')
-
-# ── Seed Data (The 29 Pillars of ORIGIN) ──────────────────────────────────────
-SEED_NODES = [
-    {"id": "origin-event-vision", "label": "ORIGIN Event Vision", "category": "Event Vision & Philosophy", "notes": "The core intentionality of the gathering."},
-    {"id": "dr-zach-bush", "label": "Dr. Zach Bush", "category": "Key Figures", "notes": "Keynote speaker on regenerative health and soil."},
-    {"id": "synchronized-meditation", "label": "Synchronized Meditation", "category": "Glossary Concepts", "notes": "Global coherence event."},
-    {"id": "amazon-basin-venue", "label": "Amazon Basin Venue", "category": "Location Profiles", "notes": "Primary location for the 2026 gathering."},
-    {"id": "origin-digital-strategy", "label": "Origin Digital Strategy", "category": "Marketing & SEO", "notes": "The architecture of our online presence."},
-    {"id": "sacred-commerce", "label": "Sacred Commerce", "category": "Event Vision & Philosophy"},
-    {"id": "chris-deckker", "label": "Chris Deckker", "category": "Key Figures"},
-    {"id": "soil-regeneration", "label": "Soil Regeneration", "category": "Glossary Concepts"},
-    {"id": "bioluminescent-forest", "label": "Bioluminescent Forest", "category": "Location Profiles"},
-    {"id": "social-media-roadmap", "label": "Social Media Roadmap", "category": "Content & Social Media"},
-    # ... Add all other 19 nodes following this pattern ...
-]
-
-SEED_EDGES = [
-    {"source": "dr-zach-bush", "target": "soil-regeneration"},
-    {"source": "origin-event-vision", "target": "sacred-commerce"},
-    {"source": "origin-digital-strategy", "target": "social-media-roadmap"},
-    {"source": "chris-deckker", "target": "origin-event-vision"}
-    # ... Add your other mapped connections ...
-]
-
-# ── Database Handshake ────────────────────────────────────────────────────────
-def get_db_connection():
-    uri = DATABASE_URL
-    # SQLAlchemy/Postgres standard fix for Render
-    if uri.startswith("postgres://"):
-        uri = uri.replace("postgres://", "postgresql://", 1)
-    return psycopg2.connect(uri, cursor_factory=RealDictCursor)
-
-def init_db():
-    """Wipes old structure and seeds the 29 nodes for a fresh deploy."""
-    if not DATABASE_URL:
-        print("No DATABASE_URL found. Running in-memory mode is not supported in this script version.")
-        return
-
-    conn = get_db_connection()
-    cur = conn.cursor()
-    
-    # Clean slate to fix the 'label column does not exist' error
-    cur.execute("DROP TABLE IF EXISTS edges CASCADE;")
-    cur.execute("DROP TABLE IF EXISTS nodes CASCADE;")
-    
-    cur.execute('''
-        CREATE TABLE nodes (
-            id TEXT PRIMARY KEY,
-            label TEXT NOT NULL,
-            category TEXT,
-            url TEXT,
-            tags TEXT,
-            notes TEXT
-        );
-    ''')
-    cur.execute('''
-        CREATE TABLE edges (
-            id SERIAL PRIMARY KEY,
-            source TEXT REFERENCES nodes(id) ON DELETE CASCADE,
-            target TEXT REFERENCES nodes(id) ON DELETE CASCADE
-        );
-    ''')
-    
-    # Insert Seed Nodes
-    for n in SEED_NODES:
-        cur.execute(
-            "INSERT INTO nodes (id, label, category, url, tags, notes) VALUES (%s, %s, %s, %s, %s, %s)",
-            (n['id'], n['label'], n['category'], n.get('url',''), n.get('tags',''), n.get('notes',''))
-        )
-    
-    # Insert Seed Edges
-    for e in SEED_EDGES:
-        cur.execute("INSERT INTO edges (source, target) VALUES (%s, %s)", (e['source'], e['target']))
-        
-    conn.commit()
-    cur.close()
-    conn.close()
-    print("Database Initialized and Seeded.")
 
 # ── All 29 wiki pages as seed nodes ──────────────────────────────────────────
 SEED_NODES = [
@@ -107,7 +30,7 @@ SEED_NODES = [
     {"id": "high-altitude-temple", "label": "High Altitude Temple", "category": "Location Profiles", "notes": "Sky-based meditation space."},
     {"id": "origin-digital-strategy", "label": "Origin Digital Strategy", "category": "Marketing & SEO", "notes": "SEO and digital growth architecture."},
     {"id": "keyword-clusters", "label": "Keyword Clusters", "category": "Marketing & SEO", "notes": "Regen-ag and spirituality SEO."},
-    {"id": "backlink-ecosystem", "label": "Backlink Ecosystem", "notes": "Organic reach and authority."},
+    {"id": "backlink-ecosystem", "label": "Backlink Ecosystem", "category": "Marketing & SEO", "notes": "Organic reach and authority."},
     {"id": "content-pillar-pages", "label": "Content Pillar Pages", "category": "Marketing & SEO"},
     {"id": "social-media-roadmap", "label": "Social Media Roadmap", "category": "Content & Social Media"},
     {"id": "visual-storytelling", "label": "Visual Storytelling", "category": "Content & Social Media"},
@@ -134,8 +57,56 @@ SEED_EDGES = [
     {"source": "origin-event-vision", "target": "impact-reporting"}
 ]
 
-# ── API Routes ────────────────────────────────────────────────────────────────
+# ── Database Handshake ────────────────────────────────────────────────────────
+def get_db_connection():
+    uri = DATABASE_URL
+    if not uri:
+        return None
+    if uri.startswith("postgres://"):
+        uri = uri.replace("postgres://", "postgresql://", 1)
+    return psycopg2.connect(uri, cursor_factory=RealDictCursor)
 
+def init_db():
+    conn = get_db_connection()
+    if not conn:
+        print("Error: DATABASE_URL not set.")
+        return
+    cur = conn.cursor()
+    
+    # Using 'origin_' prefix to avoid collisions with other projects
+    cur.execute("DROP TABLE IF EXISTS origin_edges CASCADE;")
+    cur.execute("DROP TABLE IF EXISTS origin_nodes CASCADE;")
+    
+    cur.execute('''
+        CREATE TABLE origin_nodes (
+            id TEXT PRIMARY KEY,
+            label TEXT NOT NULL,
+            category TEXT,
+            url TEXT,
+            tags TEXT,
+            notes TEXT
+        );
+    ''')
+    cur.execute('''
+        CREATE TABLE origin_edges (
+            id SERIAL PRIMARY KEY,
+            source TEXT REFERENCES origin_nodes(id) ON DELETE CASCADE,
+            target TEXT
+        );
+    ''')
+    
+    for n in SEED_NODES:
+        cur.execute("INSERT INTO origin_nodes (id, label, category, url, tags, notes) VALUES (%s, %s, %s, %s, %s, %s)",
+            (n['id'], n['label'], n['category'], n.get('url',''), n.get('tags',''), n.get('notes','')))
+    for e in SEED_EDGES:
+        cur.execute("INSERT INTO origin_edges (source, target) VALUES (%s, %s)", (e['source'], e['target']))
+    
+    conn.commit()
+    cur.close()
+    conn.close()
+    print("ORIGIN Knowledge Graph database seeded successfully.")
+
+# ── API Routes ────────────────────────────────────────────────────────────────
 @app.route('/')
 def index():
     return send_from_directory('.', 'index.html')
@@ -144,9 +115,9 @@ def index():
 def get_graph():
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT * FROM nodes")
+    cur.execute("SELECT * FROM origin_nodes ORDER BY category, label")
     nodes = cur.fetchall()
-    cur.execute("SELECT source, target FROM edges")
+    cur.execute("SELECT source, target FROM origin_edges")
     edges = cur.fetchall()
     cur.close()
     conn.close()
@@ -158,10 +129,8 @@ def add_node():
     node_id = re.sub(r'[^a-z0-9]+', '-', data['label'].lower()).strip('-')
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute(
-        "INSERT INTO nodes (id, label, category, url, tags, notes) VALUES (%s, %s, %s, %s, %s, %s) RETURNING *",
-        (node_id, data['label'], data['category'], data.get('url',''), data.get('tags',''), data.get('notes',''))
-    )
+    cur.execute("INSERT INTO origin_nodes (id, label, category, url, tags, notes) VALUES (%s, %s, %s, %s, %s, %s) RETURNING *",
+        (node_id, data['label'], data['category'], data.get('url',''), data.get('tags',''), data.get('notes','')))
     new_node = cur.fetchone()
     conn.commit()
     cur.close()
@@ -173,14 +142,12 @@ def handle_node(node_id):
     conn = get_db_connection()
     cur = conn.cursor()
     if request.method == 'DELETE':
-        cur.execute("DELETE FROM nodes WHERE id = %s", (node_id,))
+        cur.execute("DELETE FROM origin_nodes WHERE id = %s", (node_id,))
         res = {'status': 'deleted'}
     else:
         data = request.json
-        cur.execute(
-            "UPDATE nodes SET label=%s, category=%s, url=%s, tags=%s, notes=%s WHERE id=%s RETURNING *",
-            (data['label'], data['category'], data.get('url',''), data.get('tags',''), data.get('notes',''), node_id)
-        )
+        cur.execute("UPDATE origin_nodes SET label=%s, category=%s, url=%s, tags=%s, notes=%s WHERE id=%s RETURNING *",
+            (data['label'], data['category'], data.get('url',''), data.get('tags',''), data.get('notes',''), node_id))
         res = cur.fetchone()
     conn.commit()
     cur.close()
@@ -192,16 +159,14 @@ def add_edge():
     data = request.json
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("INSERT INTO edges (source, target) VALUES (%s, %s) RETURNING *", (data['source'], data['target']))
+    cur.execute("INSERT INTO origin_edges (source, target) VALUES (%s, %s) RETURNING *", (data['source'], data['target']))
     new_edge = cur.fetchone()
     conn.commit()
     cur.close()
     conn.close()
     return jsonify(new_edge)
 
-# ── Execution ────────────────────────────────────────────────────────────────
-
 if __name__ == '__main__':
-    # On first run or when structure changes, uncomment the next line:
-    #init_db() 
+    # Force initialize on startup to build the new origin_ tables
+    init_db() 
     app.run(debug=True, port=10000)
